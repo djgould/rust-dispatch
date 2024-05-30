@@ -6,6 +6,7 @@ use crate::{time_after_delay, WaitTimeout};
 
 /// A counting semaphore.
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct Semaphore {
     ptr: dispatch_semaphore_t,
 }
@@ -18,26 +19,20 @@ impl Semaphore {
     /// successful calls to `wait` than `signal`, the system assumes the
     /// `Semaphore` is still in use and will abort if it is disposed.
     pub fn new(value: u32) -> Self {
-        let ptr = unsafe {
-            dispatch_semaphore_create(value as c_long)
-        };
+        let ptr = unsafe { dispatch_semaphore_create(value as c_long) };
         Semaphore { ptr }
     }
 
     /// Wait for (decrement) self.
     pub fn wait(&self) {
-        let result = unsafe {
-            dispatch_semaphore_wait(self.ptr, DISPATCH_TIME_FOREVER)
-        };
+        let result = unsafe { dispatch_semaphore_wait(self.ptr, DISPATCH_TIME_FOREVER) };
         assert!(result == 0, "Dispatch semaphore wait errored");
     }
 
     /// Wait for (decrement) self until the specified timeout has elapsed.
     pub fn wait_timeout(&self, timeout: Duration) -> Result<(), WaitTimeout> {
         let when = time_after_delay(timeout);
-        let result = unsafe {
-            dispatch_semaphore_wait(self.ptr, when)
-        };
+        let result = unsafe { dispatch_semaphore_wait(self.ptr, when) };
         if result == 0 {
             Ok(())
         } else {
@@ -50,9 +45,7 @@ impl Semaphore {
     /// If the previous value was less than zero, this method wakes a waiting thread.
     /// Returns `true` if a thread is woken or `false` otherwise.
     pub fn signal(&self) -> bool {
-        unsafe {
-            dispatch_semaphore_signal(self.ptr) != 0
-        }
+        unsafe { dispatch_semaphore_signal(self.ptr) != 0 }
     }
 
     /// Wait to access a resource protected by self.
@@ -64,10 +57,14 @@ impl Semaphore {
 
     /// Wait until the specified timeout to access a resource protected by self.
     /// This decrements self and returns a guard that increments when dropped.
-    pub fn access_timeout(&self, timeout: Duration)
-    -> Result<SemaphoreGuard, WaitTimeout> {
+    pub fn access_timeout(&self, timeout: Duration) -> Result<SemaphoreGuard, WaitTimeout> {
         self.wait_timeout(timeout)?;
         Ok(SemaphoreGuard::new(self.clone()))
+    }
+
+    /// Returns the raw underlying `dispatch_semaphore_t` value.
+    pub fn as_raw(&self) -> dispatch_semaphore_t {
+        self.ptr
     }
 }
 
@@ -103,7 +100,7 @@ impl SemaphoreGuard {
     }
 
     /// Drops self, signaling the `Semaphore`.
-    pub fn signal(self) { }
+    pub fn signal(self) {}
 }
 
 impl Drop for SemaphoreGuard {
